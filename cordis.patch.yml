@@ -1,0 +1,50 @@
+# The @argszero/dsh-tool-identity-pin-guard bundle patch: mount and go.
+#
+# One report (#9279) describes a window in the tool pipeline: a call's identity
+# is approved, and then it can be rewritten before it is dispatched.
+#
+#   packages/core/tools/src/index.ts, createExecution
+#     const execution: MutableToolRunContext = { ...base, arguments: deepFreeze(detached) }
+#
+# The arguments are deep-frozen and the identity is not, while the type claims
+# both: "call identity, the caller signal, and the registry-assigned token are
+# readonly". A `readonly` field is erased at compile time, so a listener that
+# writes `exec.name` compiles, runs, and changes what the registry does. The only
+# `Object.freeze` on the object happens in `notifyResult`, after every stage that
+# reads it has already read it.
+#
+# What makes it more than a curiosity is where the registry reads those fields:
+# the waterfall settles first. `resolveExecution(exec.name, exec.agent,
+# exec.parent !== undefined)` at dispatch, `scopeTarget(this, exec.agent)` for the
+# `tools/execute` carriers and for the `tools/result` and `tools/post-execute`
+# observers, the approval request (`toolName: exec.name`, `callId: exec.callId`),
+# `guardReason(exec)` after the pipeline, and `canonicalResults.set(result,
+# exec.token)` — all of them after the pre-execute listeners have spoken, and all
+# of them reading the object those listeners were handed.
+#
+# `tools/pre-execute` is a cordis waterfall, and a waterfall runs its listeners
+# outermost-first; `{ prepend: true }` registers at the front of the hook list. So
+# the outermost frame is the last to see the decision and the first to have a
+# capture: its `await next()` returns once every inner listener and the built-in
+# allow have settled, and the registry has not read the object yet. Capturing the
+# identity there and writing it back inside that frame is what this plugin does.
+#
+# This patch mounts the plugin and changes nothing else. `mode: 'pin'` (the
+# default) restores the captured identity and lets the call run; `report` counts
+# and logs the same drift and writes nothing, which is how a deployment measures
+# whether anything is rewriting its calls before trusting a repair; `deny` refuses
+# the call before any approval prompt is raised; `off` installs no listener and
+# still registers the report tool, whose one job in that posture is to say that
+# the guard is off. Counters — including the denominator, so "no drift" can be
+# told apart from "never ran" — and the retained drifts are read back with the
+# `tool_identity_drift_report` tool.
+#
+# The one value import — `defineTool` from @deepseek-ai/dsh-tools — is declared as
+# a peer rather than a dependency on purpose: a `dependencies` entry is how a
+# plugin ends up in a `profile` deployment with its own copy of the registry's
+# package, a second evaluation whose symbols are equal to nothing the host holds,
+# a failure this repository has already shipped more than once.
+
+- insert:
+    - id: tool-identity-pin-guard
+      name: '@argszero/dsh-tool-identity-pin-guard'
