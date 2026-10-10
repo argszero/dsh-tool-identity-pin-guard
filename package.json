@@ -1,7 +1,7 @@
 {
   "name": "@argszero/dsh-tool-identity-pin-guard",
   "description": "Pins a tool call to the identity it was approved with. The registry hands tools/pre-execute listeners the live execution object and documents name/agent/parent/callId/signal/token as readonly, while the object is a plain writable literal with only the arguments frozen - so a listener can rewrite which tool is dispatched, in which agent's scope, and under which nested-dispatch rule, after every policy listener has already approved the original. This plugin captures that identity at the outermost pre-execute frame, awaits the downstream waterfall, and writes the captured values back before the registry reads them for dispatch, the approval prompt, the guards, the tools/execute carriers and the result notification. It counts every drift and answers for them through a read-only report tool. Zero runtime dependencies, no sandbox changes, fail-open when its own work errors.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publishConfig": {
     "access": "public"
   },
